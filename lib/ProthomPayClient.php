@@ -53,31 +53,17 @@ public function queryPayment($paymentID) {
             throw new Exception('Invalid response - missing transaction status');
         }
 
-        // Handle cases where trxID might be missing
-        if (empty($response['trxID'])) {
-            $this->logger->log('No trxID in response, generating fallback', [
+        // Require trxID for completed payments - no fallback generation
+        if ($response['transactionStatus'] === 'Completed' && empty($response['trxID'])) {
+            throw new Exception('Completed payment missing transaction ID - cannot process');
+        }
+        
+        // For non-completed payments, trxID might legitimately be empty
+        if (empty($response['trxID']) && $response['transactionStatus'] !== 'Completed') {
+            $this->logger->log('No trxID for non-completed payment', [
                 'paymentID' => $paymentID,
-                'response' => $response
+                'status' => $response['transactionStatus']
             ]);
-            
-            // Generate fallback transaction ID
-            $response['trxID'] = 'BKASH-' . substr($paymentID, 0, 8) . '-' . time();
-            
-            // Additional verification for completed payments
-            if ($response['transactionStatus'] === 'Completed') {
-                if (empty($response['amount'])) {
-                    throw new Exception('Completed payment missing amount');
-                }
-                
-                // For completed payments without trxID, we'll:
-                // 1. Use paymentID as part of our fallback trxID
-                // 2. Log this special case
-                // 3. Continue processing since the payment is verified
-                $this->logger->log('Using generated transaction ID for completed payment', [
-                    'generated_trxID' => $response['trxID'],
-                    'original_response' => $response
-                ]);
-            }
         }
 
         return $response;
